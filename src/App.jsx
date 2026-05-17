@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { supabase } from "./supabase";
 
 // ── Palette & helpers ─────────────────────────────────────────────────────────
 const COLORS = {
@@ -19,7 +20,6 @@ const WOD_TYPES = ["AMRAP", "For Time", "EMOM", "Chipper", "Benchmark", "Strengt
 const MOVEMENTS = ["Snatch", "Clean & Jerk", "Clean", "Deadlift", "Back Squat", "Front Squat", "Overhead Squat", "Press", "Push Press", "Thruster"];
 const BENCHMARKS = ["Fran", "Grace", "Helen", "Cindy", "Murph", "Annie", "Barbara", "Chelsea", "Elizabeth", "Jackie", "Karen", "Kelly", "Nancy", "Amanda"];
 const SKILLS = ["Muscle-up (rings)", "Muscle-up (bar)", "Handstand walk", "Handstand push-up", "Double-unders", "Pistol squat", "Rope climb", "Toes-to-bar", "Kipping pull-up", "Butterfly pull-up"];
-
 const MONTHS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const FULL_MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
@@ -27,15 +27,8 @@ function formatDate(d) {
   const dt = new Date(d);
   return `${dt.getDate()} ${MONTHS[dt.getMonth()]} ${dt.getFullYear()}`;
 }
-
 function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 
-// ── Storage helpers ───────────────────────────────────────────────────────────
-const KEYS = { users: "cf_users", sessions: "cf_sessions", current: "cf_current" };
-const load = k => { try { return JSON.parse(localStorage.getItem(k)) || null; } catch { return null; } };
-const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
-
-// ── CSS-in-JS style injection ─────────────────────────────────────────────────
 const GLOBAL_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -48,9 +41,8 @@ const GLOBAL_CSS = `
   .fade-in { animation: fadeIn .3s ease; }
   @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
   @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 #ff4d1c44; } 50% { box-shadow: 0 0 0 8px #ff4d1c00; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
 `;
-
-// ── Sub-components ────────────────────────────────────────────────────────────
 
 function Btn({ children, onClick, variant = "primary", style = {}, disabled = false }) {
   const base = { padding: "10px 20px", fontWeight: 600, fontSize: 14, letterSpacing: ".3px", border: "none", borderRadius: 8, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? .5 : 1, transition: "all .15s", ...style };
@@ -81,24 +73,35 @@ function StatBox({ label, value, sub, color = COLORS.accent }) {
   );
 }
 
+function Spinner() {
+  return <div style={{ width: 20, height: 20, border: `2px solid ${COLORS.border}`, borderTop: `2px solid ${COLORS.accent}`, borderRadius: "50%", animation: "spin .7s linear infinite", margin: "0 auto" }} />;
+}
+
 // ── Auth Screen ───────────────────────────────────────────────────────────────
 function AuthScreen({ onLogin }) {
-  const [mode, setMode] = useState("login"); // login | register
+  const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ username: "", password: "", name: "" });
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setErr("");
-    const users = load(KEYS.users) || {};
-    if (mode === "register") {
-      if (!form.username || !form.password || !form.name) return setErr("Rellena todos los campos.");
-      if (users[form.username]) return setErr("Ese usuario ya existe.");
-      users[form.username] = { password: form.password, name: form.name, createdAt: new Date().toISOString() };
-      save(KEYS.users, users);
-      onLogin({ username: form.username, name: form.name });
-    } else {
-      if (!users[form.username] || users[form.username].password !== form.password) return setErr("Usuario o contraseña incorrectos.");
-      onLogin({ username: form.username, name: users[form.username].name });
+    setLoading(true);
+    try {
+      if (mode === "register") {
+        if (!form.username || !form.password || !form.name) { setErr("Rellena todos los campos."); return; }
+        const { data: existing } = await supabase.from("users").select("id").eq("username", form.username).single();
+        if (existing) { setErr("Ese usuario ya existe."); return; }
+        const { error } = await supabase.from("users").insert({ username: form.username, password: form.password, name: form.name });
+        if (error) { setErr("Error al crear cuenta: " + error.message); return; }
+        onLogin({ username: form.username, name: form.name });
+      } else {
+        const { data, error } = await supabase.from("users").select("*").eq("username", form.username).eq("password", form.password).single();
+        if (error || !data) { setErr("Usuario o contraseña incorrectos."); return; }
+        onLogin({ username: data.username, name: data.name });
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -107,14 +110,11 @@ function AuthScreen({ onLogin }) {
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: COLORS.bg, padding: 20 }}>
       <div style={{ width: "100%", maxWidth: 400 }} className="fade-in">
-        {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 40 }}>
           <div style={{ fontFamily: "'Bebas Neue'", fontSize: 52, letterSpacing: 3, color: COLORS.accent, lineHeight: 1 }}>WODLOG</div>
           <div style={{ color: COLORS.muted, fontSize: 13, letterSpacing: 2, marginTop: 4 }}>CROSSFIT TRACKER</div>
         </div>
-
         <Card>
-          {/* Toggle */}
           <div style={{ display: "flex", background: COLORS.surface, borderRadius: 10, padding: 4, marginBottom: 24 }}>
             {["login","register"].map(m => (
               <button key={m} onClick={() => { setMode(m); setErr(""); }} style={{ flex: 1, padding: "8px 0", borderRadius: 8, fontWeight: 600, fontSize: 13, background: mode === m ? COLORS.accent : "transparent", color: mode === m ? "#fff" : COLORS.muted, border: "none", cursor: "pointer", transition: "all .2s" }}>
@@ -122,19 +122,18 @@ function AuthScreen({ onLogin }) {
               </button>
             ))}
           </div>
-
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {mode === "register" && <input placeholder="Nombre completo" value={form.name} onChange={F("name")} />}
             <input placeholder="Usuario" value={form.username} onChange={F("username")} onKeyDown={e => e.key === "Enter" && handleSubmit()} />
             <input type="password" placeholder="Contraseña" value={form.password} onChange={F("password")} onKeyDown={e => e.key === "Enter" && handleSubmit()} />
             {err && <div style={{ color: "#ff6060", fontSize: 13, background: "#ff000015", borderRadius: 8, padding: "8px 12px" }}>{err}</div>}
-            <Btn onClick={handleSubmit} style={{ marginTop: 4, padding: "12px 0", fontSize: 15, letterSpacing: ".5px" }}>
-              {mode === "login" ? "Entrar" : "Crear cuenta"}
+            <Btn onClick={handleSubmit} disabled={loading} style={{ marginTop: 4, padding: "12px 0", fontSize: 15 }}>
+              {loading ? <Spinner /> : mode === "login" ? "Entrar" : "Crear cuenta"}
             </Btn>
           </div>
         </Card>
         <div style={{ textAlign: "center", color: COLORS.muted, fontSize: 12, marginTop: 20 }}>
-          Los datos se guardan en este navegador · Sin servidores · Gratis
+          Datos sincronizados en todos tus dispositivos
         </div>
         <div style={{ textAlign: "center", color: COLORS.muted, fontSize: 11, marginTop: 10, letterSpacing: ".5px" }}>
           Creada por <span style={{ color: COLORS.accent, fontWeight: 600 }}>Maria Costas</span>
@@ -147,32 +146,31 @@ function AuthScreen({ onLogin }) {
 // ── Log Workout Form ──────────────────────────────────────────────────────────
 function LogWorkout({ user, onSave, onCancel }) {
   const [type, setType] = useState("WOD");
+  const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     date: new Date().toISOString().slice(0, 10),
-    category: "AMRAP",
-    description: "",
-    result: "",
-    resultUnit: "min",
-    movement: MOVEMENTS[0],
-    weight: "",
-    weightUnit: "kg",
-    reps: "",
-    benchmark: BENCHMARKS[0],
-    skill: SKILLS[0],
-    skillLevel: "Logrado",
-    notes: "",
-    rx: true,
-    rating: 3,
+    category: "AMRAP", description: "", result: "", resultUnit: "min",
+    movement: MOVEMENTS[0], weight: "", weightUnit: "kg", reps: "",
+    benchmark: BENCHMARKS[0], skill: SKILLS[0], skillLevel: "Logrado",
+    notes: "", rx: true, rating: 3,
   });
   const F = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
   const FB = k => v => setForm(f => ({ ...f, [k]: v }));
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.date) return;
-    const session = { id: uid(), userId: user.username, createdAt: new Date().toISOString(), type, ...form };
-    const sessions = load(KEYS.sessions) || [];
-    sessions.push(session);
-    save(KEYS.sessions, sessions);
+    setLoading(true);
+    const session = {
+      id: uid(), user_id: user.username, type,
+      date: form.date, category: form.category, description: form.description,
+      result: form.result, result_unit: form.resultUnit, movement: form.movement,
+      weight: form.weight, weight_unit: form.weightUnit, reps: form.reps,
+      benchmark: form.benchmark, skill: form.skill, skill_level: form.skillLevel,
+      notes: form.notes, rx: form.rx, rating: form.rating,
+    };
+    const { error } = await supabase.from("sessions").insert(session);
+    setLoading(false);
+    if (error) { alert("Error al guardar: " + error.message); return; }
     onSave();
   };
 
@@ -182,131 +180,66 @@ function LogWorkout({ user, onSave, onCancel }) {
     <div className="fade-in" style={{ maxWidth: 560, margin: "0 auto" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
         <Btn variant="ghost" onClick={onCancel} style={{ padding: "8px 14px" }}>← Volver</Btn>
-        <h2 style={{ fontFamily: "'Bebas Neue'", fontSize: 28, letterSpacing: 1, color: COLORS.text }}>Registrar entreno</h2>
+        <h2 style={{ fontFamily: "'Bebas Neue'", fontSize: 28, letterSpacing: 1 }}>Registrar entreno</h2>
       </div>
-
       <Card style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-        {/* Type selector */}
         <div>
           <Label>Tipo de registro</Label>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {["WOD", "Levantamiento", "Benchmark", "Skill"].map(t => (
-              <button key={t} onClick={() => setType(t)} style={{ padding: "8px 16px", borderRadius: 20, fontWeight: 600, fontSize: 13, background: type === t ? COLORS.accent : COLORS.surface, color: type === t ? "#fff" : COLORS.muted, border: `1px solid ${type === t ? COLORS.accent : COLORS.border}`, cursor: "pointer", transition: "all .2s" }}>{t}</button>
+            {["WOD","Levantamiento","Benchmark","Skill"].map(t => (
+              <button key={t} onClick={() => setType(t)} style={{ padding: "8px 16px", borderRadius: 20, fontWeight: 600, fontSize: 13, background: type===t ? COLORS.accent : COLORS.surface, color: type===t ? "#fff" : COLORS.muted, border: `1px solid ${type===t ? COLORS.accent : COLORS.border}`, cursor: "pointer", transition: "all .2s" }}>{t}</button>
             ))}
           </div>
         </div>
-
-        <div>
-          <Label>Fecha</Label>
-          <input type="date" value={form.date} onChange={F("date")} />
-        </div>
+        <div><Label>Fecha</Label><input type="date" value={form.date} onChange={F("date")} /></div>
 
         {type === "WOD" && <>
-          <div>
-            <Label>Categoría</Label>
-            <select value={form.category} onChange={F("category")}>
-              {WOD_TYPES.map(w => <option key={w}>{w}</option>)}
-            </select>
-          </div>
-          <div>
-            <Label>Descripción del WOD</Label>
-            <textarea rows={3} placeholder="Ej: 21-15-9 Thrusters 43kg / Pull-ups" value={form.description} onChange={F("description")} style={{ resize: "vertical" }} />
-          </div>
-          <div>
-            <Label>Resultado</Label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input placeholder="Ej: 7:32 o 12 rondas" value={form.result} onChange={F("result")} />
-              <select value={form.resultUnit} onChange={F("resultUnit")} style={{ width: 100 }}>
-                {["min", "seg", "rondas", "reps"].map(u => <option key={u}>{u}</option>)}
-              </select>
-            </div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <button onClick={() => FB("rx")(!form.rx)} style={{ width: 40, height: 24, borderRadius: 12, background: form.rx ? COLORS.green : COLORS.border, border: "none", cursor: "pointer", position: "relative", transition: "all .2s" }}>
-              <span style={{ position: "absolute", top: 3, left: form.rx ? 18 : 3, width: 18, height: 18, borderRadius: 9, background: "#fff", transition: "left .2s" }} />
+          <div><Label>Categoría</Label><select value={form.category} onChange={F("category")}>{WOD_TYPES.map(w=><option key={w}>{w}</option>)}</select></div>
+          <div><Label>Descripción del WOD</Label><textarea rows={3} placeholder="Ej: 21-15-9 Thrusters 43kg / Pull-ups" value={form.description} onChange={F("description")} style={{ resize:"vertical" }} /></div>
+          <div><Label>Resultado</Label><div style={{ display:"flex", gap:8 }}><input placeholder="Ej: 7:32 o 12 rondas" value={form.result} onChange={F("result")} /><select value={form.resultUnit} onChange={F("resultUnit")} style={{ width:100 }}>{["min","seg","rondas","reps"].map(u=><option key={u}>{u}</option>)}</select></div></div>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <button onClick={() => FB("rx")(!form.rx)} style={{ width:40, height:24, borderRadius:12, background: form.rx ? COLORS.green : COLORS.border, border:"none", cursor:"pointer", position:"relative", transition:"all .2s" }}>
+              <span style={{ position:"absolute", top:3, left: form.rx ? 18 : 3, width:18, height:18, borderRadius:9, background:"#fff", transition:"left .2s" }} />
             </button>
-            <span style={{ fontSize: 14, color: form.rx ? COLORS.green : COLORS.muted, fontWeight: 600 }}>RX {form.rx ? "✓" : ""}</span>
+            <span style={{ fontSize:14, color: form.rx ? COLORS.green : COLORS.muted, fontWeight:600 }}>RX {form.rx ? "✓" : ""}</span>
           </div>
         </>}
 
         {type === "Levantamiento" && <>
-          <div>
-            <Label>Movimiento</Label>
-            <select value={form.movement} onChange={F("movement")}>
-              {MOVEMENTS.map(m => <option key={m}>{m}</option>)}
-            </select>
-          </div>
-          <div>
-            <Label>Peso (1RM o máximo)</Label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input type="number" placeholder="100" value={form.weight} onChange={F("weight")} />
-              <select value={form.weightUnit} onChange={F("weightUnit")} style={{ width: 80 }}>
-                {["kg", "lb"].map(u => <option key={u}>{u}</option>)}
-              </select>
-            </div>
-          </div>
-          <div>
-            <Label>Series x Reps (opcional)</Label>
-            <input placeholder="Ej: 5x3, 3x1" value={form.reps} onChange={F("reps")} />
-          </div>
+          <div><Label>Movimiento</Label><select value={form.movement} onChange={F("movement")}>{MOVEMENTS.map(m=><option key={m}>{m}</option>)}</select></div>
+          <div><Label>Peso (1RM o máximo)</Label><div style={{ display:"flex", gap:8 }}><input type="number" placeholder="100" value={form.weight} onChange={F("weight")} /><select value={form.weightUnit} onChange={F("weightUnit")} style={{ width:80 }}>{["kg","lb"].map(u=><option key={u}>{u}</option>)}</select></div></div>
+          <div><Label>Series x Reps (opcional)</Label><input placeholder="Ej: 5x3, 3x1" value={form.reps} onChange={F("reps")} /></div>
         </>}
 
         {type === "Benchmark" && <>
-          <div>
-            <Label>Benchmark</Label>
-            <select value={form.benchmark} onChange={F("benchmark")}>
-              {BENCHMARKS.map(b => <option key={b}>{b}</option>)}
-            </select>
-          </div>
-          <div>
-            <Label>Resultado</Label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input placeholder="Ej: 3:02" value={form.result} onChange={F("result")} />
-              <select value={form.resultUnit} onChange={F("resultUnit")} style={{ width: 100 }}>
-                {["min", "seg", "rondas", "reps"].map(u => <option key={u}>{u}</option>)}
-              </select>
-            </div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <button onClick={() => FB("rx")(!form.rx)} style={{ width: 40, height: 24, borderRadius: 12, background: form.rx ? COLORS.green : COLORS.border, border: "none", cursor: "pointer", position: "relative", transition: "all .2s" }}>
-              <span style={{ position: "absolute", top: 3, left: form.rx ? 18 : 3, width: 18, height: 18, borderRadius: 9, background: "#fff", transition: "left .2s" }} />
+          <div><Label>Benchmark</Label><select value={form.benchmark} onChange={F("benchmark")}>{BENCHMARKS.map(b=><option key={b}>{b}</option>)}</select></div>
+          <div><Label>Resultado</Label><div style={{ display:"flex", gap:8 }}><input placeholder="Ej: 3:02" value={form.result} onChange={F("result")} /><select value={form.resultUnit} onChange={F("resultUnit")} style={{ width:100 }}>{["min","seg","rondas","reps"].map(u=><option key={u}>{u}</option>)}</select></div></div>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <button onClick={() => FB("rx")(!form.rx)} style={{ width:40, height:24, borderRadius:12, background: form.rx ? COLORS.green : COLORS.border, border:"none", cursor:"pointer", position:"relative", transition:"all .2s" }}>
+              <span style={{ position:"absolute", top:3, left: form.rx ? 18 : 3, width:18, height:18, borderRadius:9, background:"#fff", transition:"left .2s" }} />
             </button>
-            <span style={{ fontSize: 14, color: form.rx ? COLORS.green : COLORS.muted, fontWeight: 600 }}>RX {form.rx ? "✓" : ""}</span>
+            <span style={{ fontSize:14, color: form.rx ? COLORS.green : COLORS.muted, fontWeight:600 }}>RX {form.rx ? "✓" : ""}</span>
           </div>
         </>}
 
         {type === "Skill" && <>
-          <div>
-            <Label>Habilidad</Label>
-            <select value={form.skill} onChange={F("skill")}>
-              {SKILLS.map(s => <option key={s}>{s}</option>)}
-            </select>
-          </div>
-          <div>
-            <Label>Nivel</Label>
-            <select value={form.skillLevel} onChange={F("skillLevel")}>
-              {["Logrado", "En progreso", "Primera vez", "PR nuevo"].map(l => <option key={l}>{l}</option>)}
-            </select>
-          </div>
+          <div><Label>Habilidad</Label><select value={form.skill} onChange={F("skill")}>{SKILLS.map(s=><option key={s}>{s}</option>)}</select></div>
+          <div><Label>Nivel</Label><select value={form.skillLevel} onChange={F("skillLevel")}>{["Logrado","En progreso","Primera vez","PR nuevo"].map(l=><option key={l}>{l}</option>)}</select></div>
         </>}
 
-        {/* Common */}
         <div>
           <Label>Sensación ({form.rating}/5)</Label>
-          <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ display:"flex", gap:6 }}>
             {[1,2,3,4,5].map(n => (
-              <button key={n} onClick={() => FB("rating")(n)} style={{ fontSize: 22, background: "none", border: "none", cursor: "pointer", opacity: n <= form.rating ? 1 : .3, filter: n <= form.rating ? "none" : "grayscale(1)" }}>🔥</button>
+              <button key={n} onClick={() => FB("rating")(n)} style={{ fontSize:22, background:"none", border:"none", cursor:"pointer", opacity: n<=form.rating ? 1 : .3 }}>🔥</button>
             ))}
           </div>
         </div>
-        <div>
-          <Label>Notas</Label>
-          <textarea rows={2} placeholder="Notas, sensaciones, escalado..." value={form.notes} onChange={F("notes")} style={{ resize: "vertical" }} />
-        </div>
+        <div><Label>Notas</Label><textarea rows={2} placeholder="Notas, sensaciones, escalado..." value={form.notes} onChange={F("notes")} style={{ resize:"vertical" }} /></div>
 
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+        <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
           <Btn variant="ghost" onClick={onCancel}>Cancelar</Btn>
-          <Btn onClick={handleSave}>💾 Guardar</Btn>
+          <Btn onClick={handleSave} disabled={loading}>{loading ? <Spinner /> : "💾 Guardar"}</Btn>
         </div>
       </Card>
     </div>
@@ -317,150 +250,125 @@ function LogWorkout({ user, onSave, onCancel }) {
 function SessionCard({ s, onDelete }) {
   const typeColor = { WOD: COLORS.accent, Levantamiento: COLORS.gold, Benchmark: COLORS.blue, Skill: COLORS.green };
   const c = typeColor[s.type] || COLORS.accent;
-
   const mainInfo = () => {
-    if (s.type === "WOD") return `${s.category} · ${s.result ? s.result + " " + s.resultUnit : "—"}${s.rx ? " · RX" : ""}`;
-    if (s.type === "Levantamiento") return `${s.movement} · ${s.weight || "—"} ${s.weightUnit}`;
-    if (s.type === "Benchmark") return `${s.benchmark} · ${s.result ? s.result + " " + s.resultUnit : "—"}${s.rx ? " · RX" : ""}`;
-    if (s.type === "Skill") return `${s.skill} · ${s.skillLevel}`;
+    if (s.type === "WOD") return `${s.category} · ${s.result ? s.result + " " + s.result_unit : "—"}${s.rx ? " · RX" : ""}`;
+    if (s.type === "Levantamiento") return `${s.movement} · ${s.weight || "—"} ${s.weight_unit}`;
+    if (s.type === "Benchmark") return `${s.benchmark} · ${s.result ? s.result + " " + s.result_unit : "—"}${s.rx ? " · RX" : ""}`;
+    if (s.type === "Skill") return `${s.skill} · ${s.skill_level}`;
     return "";
   };
-
   return (
     <div className="fade-in" style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderLeft: `3px solid ${c}`, borderRadius: 12, padding: "14px 18px", display: "flex", alignItems: "flex-start", gap: 14 }}>
       <div style={{ flex: 1 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4, flexWrap:"wrap" }}>
           <Badge label={s.type} color={c} />
-          <span style={{ fontSize: 13, color: COLORS.muted }}>{formatDate(s.date)}</span>
-          {s.rating && <span style={{ fontSize: 13 }}>{"🔥".repeat(s.rating)}</span>}
+          <span style={{ fontSize:13, color: COLORS.muted }}>{formatDate(s.date)}</span>
+          {s.rating && <span style={{ fontSize:13 }}>{"🔥".repeat(s.rating)}</span>}
         </div>
-        <div style={{ fontWeight: 600, fontSize: 15, color: COLORS.text, marginBottom: s.description || s.notes ? 4 : 0 }}>{mainInfo()}</div>
-        {s.description && <div style={{ fontSize: 13, color: COLORS.muted }}>{s.description}</div>}
-        {s.notes && <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 4, fontStyle: "italic" }}>{s.notes}</div>}
+        <div style={{ fontWeight:600, fontSize:15, color: COLORS.text, marginBottom: s.description||s.notes ? 4 : 0 }}>{mainInfo()}</div>
+        {s.description && <div style={{ fontSize:13, color: COLORS.muted }}>{s.description}</div>}
+        {s.notes && <div style={{ fontSize:12, color: COLORS.muted, marginTop:4, fontStyle:"italic" }}>{s.notes}</div>}
       </div>
-      <Btn variant="danger" onClick={onDelete} style={{ padding: "6px 10px", fontSize: 12, flexShrink: 0 }}>✕</Btn>
+      <Btn variant="danger" onClick={onDelete} style={{ padding:"6px 10px", fontSize:12, flexShrink:0 }}>✕</Btn>
     </div>
   );
 }
 
-// ── Stats / Summary ───────────────────────────────────────────────────────────
+// ── Stats View ────────────────────────────────────────────────────────────────
 function StatsView({ sessions }) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
-  const [view, setView] = useState("monthly"); // monthly | annual
+  const [view, setView] = useState("monthly");
 
   const yearSessions = sessions.filter(s => new Date(s.date).getFullYear() === year);
   const monthSessions = yearSessions.filter(s => new Date(s.date).getMonth() === month);
-
   const target = view === "monthly" ? monthSessions : yearSessions;
 
-  const byType = (arr) => {
-    const m = {};
-    arr.forEach(s => { m[s.type] = (m[s.type] || 0) + 1; });
-    return m;
-  };
-
-  const monthlyCount = MONTHS.map((_, i) => yearSessions.filter(s => new Date(s.date).getMonth() === i).length);
+  const byType = arr => { const m = {}; arr.forEach(s => { m[s.type] = (m[s.type]||0)+1; }); return m; };
+  const monthlyCount = MONTHS.map((_,i) => yearSessions.filter(s => new Date(s.date).getMonth()===i).length);
   const maxBar = Math.max(...monthlyCount, 1);
+  const rxCount = target.filter(s=>s.rx).length;
+  const rxBase = target.filter(s=>s.type==="WOD"||s.type==="Benchmark").length;
+  const rxPct = rxBase ? Math.round(rxCount/rxBase*100) : 0;
 
-  const rxCount = target.filter(s => s.rx).length;
-  const rxPct = target.length ? Math.round(rxCount / target.filter(s => s.type === "WOD" || s.type === "Benchmark").length * 100) || 0 : 0;
-
-  // PRs per lift
   const liftPRs = {};
-  sessions.filter(s => s.type === "Levantamiento" && s.weight).sort((a,b) => new Date(a.date)-new Date(b.date)).forEach(s => {
+  sessions.filter(s=>s.type==="Levantamiento"&&s.weight).sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(s=>{
     const w = parseFloat(s.weight);
-    if (!liftPRs[s.movement] || w > liftPRs[s.movement].weight) liftPRs[s.movement] = { weight: w, unit: s.weightUnit, date: s.date };
+    if (!liftPRs[s.movement]||w>liftPRs[s.movement].weight) liftPRs[s.movement]={weight:w,unit:s.weight_unit,date:s.date};
   });
 
   const types = byType(target);
-  const typeColor = { WOD: COLORS.accent, Levantamiento: COLORS.gold, Benchmark: COLORS.blue, Skill: COLORS.green };
-
-  const availableYears = [...new Set(sessions.map(s => new Date(s.date).getFullYear()))].sort((a,b)=>b-a);
-  if (!availableYears.includes(year) && availableYears.length) setYear(availableYears[0]);
+  const availableYears = [...new Set(sessions.map(s=>new Date(s.date).getFullYear()))].sort((a,b)=>b-a);
 
   return (
     <div className="fade-in">
-      {/* Controls */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", background: COLORS.surface, borderRadius: 10, padding: 4, border: `1px solid ${COLORS.border}` }}>
-          {["monthly","annual"].map(v => (
-            <button key={v} onClick={() => setView(v)} style={{ padding: "7px 16px", borderRadius: 8, fontWeight: 600, fontSize: 13, background: view===v ? COLORS.accent : "transparent", color: view===v ? "#fff" : COLORS.muted, border:"none", cursor:"pointer", transition:"all .2s" }}>
-              {v === "monthly" ? "Mensual" : "Anual"}
+      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:24, flexWrap:"wrap" }}>
+        <div style={{ display:"flex", background: COLORS.surface, borderRadius:10, padding:4, border:`1px solid ${COLORS.border}` }}>
+          {["monthly","annual"].map(v=>(
+            <button key={v} onClick={()=>setView(v)} style={{ padding:"7px 16px", borderRadius:8, fontWeight:600, fontSize:13, background:view===v?COLORS.accent:"transparent", color:view===v?"#fff":COLORS.muted, border:"none", cursor:"pointer", transition:"all .2s" }}>
+              {v==="monthly"?"Mensual":"Anual"}
             </button>
           ))}
         </div>
-        <select value={year} onChange={e=>setYear(+e.target.value)} style={{ width: 90 }}>
-          {(availableYears.length ? availableYears : [now.getFullYear()]).map(y=><option key={y}>{y}</option>)}
+        <select value={year} onChange={e=>setYear(+e.target.value)} style={{ width:90 }}>
+          {(availableYears.length?availableYears:[now.getFullYear()]).map(y=><option key={y}>{y}</option>)}
         </select>
-        {view==="monthly" && (
-          <select value={month} onChange={e=>setMonth(+e.target.value)} style={{ width: 130 }}>
-            {FULL_MONTHS.map((m,i)=><option key={i} value={i}>{m}</option>)}
-          </select>
-        )}
+        {view==="monthly"&&<select value={month} onChange={e=>setMonth(+e.target.value)} style={{ width:130 }}>{FULL_MONTHS.map((m,i)=><option key={i} value={i}>{m}</option>)}</select>}
       </div>
 
-      {/* Stats grid */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))", gap:10, marginBottom:20 }}>
-        <StatBox label="Entrenos" value={target.length} color={COLORS.accent} />
-        <StatBox label="WODs" value={types.WOD||0} color={COLORS.accent} />
+        <StatBox label="Entrenos" value={target.length} />
+        <StatBox label="WODs" value={types.WOD||0} />
         <StatBox label="Levant." value={types.Levantamiento||0} color={COLORS.gold} />
         <StatBox label="Benchmarks" value={types.Benchmark||0} color={COLORS.blue} />
         <StatBox label="Skills" value={types.Skill||0} color={COLORS.green} />
         <StatBox label="% RX" value={rxPct+"%"} color={COLORS.green} sub="sobre WODs/Bench" />
       </div>
 
-      {/* Annual bar chart */}
-      {view === "annual" && (
-        <Card style={{ marginBottom: 16 }}>
-          <div style={{ fontWeight: 700, marginBottom: 16, color: COLORS.text }}>Entrenos por mes — {year}</div>
-          <div style={{ display:"flex", gap:6, alignItems:"flex-end", height: 100 }}>
-            {MONTHS.map((m,i) => (
+      {view==="annual"&&(
+        <Card style={{ marginBottom:16 }}>
+          <div style={{ fontWeight:700, marginBottom:16 }}>Entrenos por mes — {year}</div>
+          <div style={{ display:"flex", gap:6, alignItems:"flex-end", height:100 }}>
+            {MONTHS.map((m,i)=>(
               <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
-                <div style={{ fontSize:10, color: COLORS.muted }}>{monthlyCount[i]||""}</div>
-                <div style={{ width:"100%", background: i===month ? COLORS.accent : COLORS.accentDim, borderRadius:"4px 4px 0 0", height: `${(monthlyCount[i]/maxBar)*80+4}px`, transition:"height .3s", cursor:"pointer" }} onClick={()=>{setMonth(i);setView("monthly");}} />
-                <div style={{ fontSize:10, color: COLORS.muted }}>{m}</div>
+                <div style={{ fontSize:10, color:COLORS.muted }}>{monthlyCount[i]||""}</div>
+                <div style={{ width:"100%", background:i===month?COLORS.accent:COLORS.accentDim, borderRadius:"4px 4px 0 0", height:`${(monthlyCount[i]/maxBar)*80+4}px`, transition:"height .3s", cursor:"pointer" }} onClick={()=>{setMonth(i);setView("monthly");}} />
+                <div style={{ fontSize:10, color:COLORS.muted }}>{m}</div>
               </div>
             ))}
           </div>
         </Card>
       )}
 
-      {/* Lift PRs */}
-      {Object.keys(liftPRs).length > 0 && (
-        <Card style={{ marginBottom: 16 }}>
-          <div style={{ fontWeight: 700, marginBottom: 14, color: COLORS.text }}>🏆 Récords personales (PRs)</div>
-          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-            {Object.entries(liftPRs).map(([mov, pr]) => (
-              <div key={mov} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", borderBottom:`1px solid ${COLORS.border}`, paddingBottom:8 }}>
-                <span style={{ fontWeight:600, color: COLORS.text }}>{mov}</span>
-                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                  <span style={{ fontFamily:"'Bebas Neue'", fontSize:22, color: COLORS.gold }}>{pr.weight} {pr.unit}</span>
-                  <span style={{ fontSize:12, color: COLORS.muted }}>{formatDate(pr.date)}</span>
-                </div>
+      {Object.keys(liftPRs).length>0&&(
+        <Card style={{ marginBottom:16 }}>
+          <div style={{ fontWeight:700, marginBottom:14 }}>🏆 Récords personales (PRs)</div>
+          {Object.entries(liftPRs).map(([mov,pr])=>(
+            <div key={mov} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", borderBottom:`1px solid ${COLORS.border}`, paddingBottom:8, marginBottom:8 }}>
+              <span style={{ fontWeight:600 }}>{mov}</span>
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                <span style={{ fontFamily:"'Bebas Neue'", fontSize:22, color:COLORS.gold }}>{pr.weight} {pr.unit}</span>
+                <span style={{ fontSize:12, color:COLORS.muted }}>{formatDate(pr.date)}</span>
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </Card>
       )}
 
-      {/* Benchmark history */}
-      {sessions.filter(s=>s.type==="Benchmark").length > 0 && (
+      {sessions.filter(s=>s.type==="Benchmark").length>0&&(
         <Card>
-          <div style={{ fontWeight: 700, marginBottom: 14, color: COLORS.text }}>⏱ Mejores tiempos Benchmarks</div>
-          {(() => {
-            const bests = {};
-            sessions.filter(s=>s.type==="Benchmark"&&s.result).sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(s=>{
-              if (!bests[s.benchmark]) bests[s.benchmark] = s;
-            });
-            return Object.entries(bests).map(([b, s]) => (
+          <div style={{ fontWeight:700, marginBottom:14 }}>⏱ Mejores tiempos Benchmarks</div>
+          {(()=>{
+            const bests={};
+            sessions.filter(s=>s.type==="Benchmark"&&s.result).sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(s=>{ if(!bests[s.benchmark])bests[s.benchmark]=s; });
+            return Object.entries(bests).map(([b,s])=>(
               <div key={b} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", borderBottom:`1px solid ${COLORS.border}`, paddingBottom:8, marginBottom:8 }}>
                 <span style={{ fontWeight:600 }}>{b}</span>
                 <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                  <span style={{ fontFamily:"'Bebas Neue'", fontSize:20, color: COLORS.blue }}>{s.result} {s.resultUnit}</span>
-                  {s.rx && <Badge label="RX" color={COLORS.green} />}
-                  <span style={{ fontSize:12, color: COLORS.muted }}>{formatDate(s.date)}</span>
+                  <span style={{ fontFamily:"'Bebas Neue'", fontSize:20, color:COLORS.blue }}>{s.result} {s.result_unit}</span>
+                  {s.rx&&<Badge label="RX" color={COLORS.green} />}
+                  <span style={{ fontSize:12, color:COLORS.muted }}>{formatDate(s.date)}</span>
                 </div>
               </div>
             ));
@@ -468,11 +376,7 @@ function StatsView({ sessions }) {
         </Card>
       )}
 
-      {target.length === 0 && (
-        <div style={{ textAlign:"center", color: COLORS.muted, padding: 40 }}>
-          No hay entrenos en este período. ¡Empieza a registrar!
-        </div>
-      )}
+      {target.length===0&&<div style={{ textAlign:"center", color:COLORS.muted, padding:40 }}>No hay entrenos en este período.</div>}
     </div>
   );
 }
@@ -480,22 +384,16 @@ function StatsView({ sessions }) {
 // ── History View ──────────────────────────────────────────────────────────────
 function HistoryView({ sessions, onDelete }) {
   const [filter, setFilter] = useState("Todos");
-  const types = ["Todos", "WOD", "Levantamiento", "Benchmark", "Skill"];
-  const visible = (filter === "Todos" ? sessions : sessions.filter(s => s.type === filter))
-    .sort((a,b) => new Date(b.date) - new Date(a.date));
-
+  const visible = (filter==="Todos"?sessions:sessions.filter(s=>s.type===filter)).sort((a,b)=>new Date(b.date)-new Date(a.date));
   return (
     <div className="fade-in">
       <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:20 }}>
-        {types.map(t => (
-          <button key={t} onClick={() => setFilter(t)} style={{ padding:"7px 14px", borderRadius:20, fontWeight:600, fontSize:13, background: filter===t ? COLORS.accent : COLORS.surface, color: filter===t ? "#fff" : COLORS.muted, border:`1px solid ${filter===t ? COLORS.accent : COLORS.border}`, cursor:"pointer", transition:"all .2s" }}>{t}</button>
+        {["Todos","WOD","Levantamiento","Benchmark","Skill"].map(t=>(
+          <button key={t} onClick={()=>setFilter(t)} style={{ padding:"7px 14px", borderRadius:20, fontWeight:600, fontSize:13, background:filter===t?COLORS.accent:COLORS.surface, color:filter===t?"#fff":COLORS.muted, border:`1px solid ${filter===t?COLORS.accent:COLORS.border}`, cursor:"pointer", transition:"all .2s" }}>{t}</button>
         ))}
       </div>
       <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-        {visible.length === 0
-          ? <div style={{ textAlign:"center", color: COLORS.muted, padding:40 }}>No hay registros aún.</div>
-          : visible.map(s => <SessionCard key={s.id} s={s} onDelete={() => onDelete(s.id)} />)
-        }
+        {visible.length===0?<div style={{ textAlign:"center", color:COLORS.muted, padding:40 }}>No hay registros aún.</div>:visible.map(s=><SessionCard key={s.id} s={s} onDelete={()=>onDelete(s.id)} />)}
       </div>
     </div>
   );
@@ -503,89 +401,77 @@ function HistoryView({ sessions, onDelete }) {
 
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
-  const [user, setUser] = useState(() => load(KEYS.current));
+  const [user, setUser] = useState(null);
   const [tab, setTab] = useState("dashboard");
   const [logging, setLogging] = useState(false);
   const [sessions, setSessions] = useState([]);
+  const [loadingApp, setLoadingApp] = useState(true);
 
-  // Inject CSS
   useEffect(() => {
     const style = document.createElement("style");
     style.textContent = GLOBAL_CSS;
     document.head.appendChild(style);
+    // Restore session from localStorage
+    const saved = localStorage.getItem("wodlog_user");
+    if (saved) setUser(JSON.parse(saved));
+    setLoadingApp(false);
     return () => document.head.removeChild(style);
   }, []);
 
-  const loadSessions = useCallback(() => {
+  const loadSessions = useCallback(async () => {
     if (!user) return;
-    const all = load(KEYS.sessions) || [];
-    setSessions(all.filter(s => s.userId === user.username));
+    const { data } = await supabase.from("sessions").select("*").eq("user_id", user.username).order("date", { ascending: false });
+    setSessions(data || []);
   }, [user]);
 
   useEffect(() => { loadSessions(); }, [loadSessions]);
 
-  const handleLogin = (u) => { save(KEYS.current, u); setUser(u); };
-  const handleLogout = () => { save(KEYS.current, null); setUser(null); setSessions([]); };
+  const handleLogin = (u) => { localStorage.setItem("wodlog_user", JSON.stringify(u)); setUser(u); };
+  const handleLogout = () => { localStorage.removeItem("wodlog_user"); setUser(null); setSessions([]); };
 
-  const handleDelete = (id) => {
-    const all = (load(KEYS.sessions) || []).filter(s => s.id !== id);
-    save(KEYS.sessions, all);
+  const handleDelete = async (id) => {
+    await supabase.from("sessions").delete().eq("id", id);
     loadSessions();
   };
 
+  if (loadingApp) return <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background: COLORS.bg }}><Spinner /></div>;
   if (!user) return <AuthScreen onLogin={handleLogin} />;
 
-  const NAV = [
-    { id:"dashboard", label:"📊 Inicio" },
-    { id:"history",   label:"📋 Historial" },
-    { id:"stats",     label:"📈 Estadísticas" },
-  ];
-
-  const recentSessions = sessions.sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
-  const thisWeek = sessions.filter(s => {
-    const d = new Date(s.date); const now = new Date();
-    const diff = (now - d) / (1000*60*60*24);
-    return diff <= 7;
-  }).length;
-  const thisMonth = sessions.filter(s => {
-    const d = new Date(s.date); const now = new Date();
-    return d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear();
-  }).length;
+  const NAV = [{ id:"dashboard", label:"📊 Inicio" }, { id:"history", label:"📋 Historial" }, { id:"stats", label:"📈 Estadísticas" }];
+  const recentSessions = [...sessions].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
+  const thisWeek = sessions.filter(s=>{ const d=new Date(s.date); return (new Date()-d)/(1000*60*60*24)<=7; }).length;
+  const thisMonth = sessions.filter(s=>{ const d=new Date(s.date); const n=new Date(); return d.getMonth()===n.getMonth()&&d.getFullYear()===n.getFullYear(); }).length;
 
   return (
     <div style={{ background: COLORS.bg, minHeight:"100vh", color: COLORS.text }}>
-      {/* Header */}
       <div style={{ background: COLORS.surface, borderBottom:`1px solid ${COLORS.border}`, padding:"0 20px", position:"sticky", top:0, zIndex:100 }}>
         <div style={{ maxWidth:800, margin:"0 auto", display:"flex", alignItems:"center", justifyContent:"space-between", height:56 }}>
           <div style={{ fontFamily:"'Bebas Neue'", fontSize:28, letterSpacing:2, color: COLORS.accent }}>WODLOG</div>
           <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-            <span style={{ fontSize:13, color: COLORS.muted, display:"none" }} className="desktop-only">Hola, {user.name}</span>
-            <Btn onClick={() => { setLogging(true); setTab("log"); }} style={{ padding:"8px 16px", fontSize:13, animation: "pulse 2s infinite" }}>+ Entreno</Btn>
+            <Btn onClick={()=>{ setLogging(true); setTab("log"); }} style={{ padding:"8px 16px", fontSize:13, animation:"pulse 2s infinite" }}>+ Entreno</Btn>
             <button onClick={handleLogout} style={{ background:"none", border:`1px solid ${COLORS.border}`, borderRadius:8, padding:"7px 12px", color: COLORS.muted, fontSize:13, cursor:"pointer" }}>Salir</button>
           </div>
         </div>
       </div>
 
-      {/* Nav tabs */}
-      {!logging && (
+      {!logging&&(
         <div style={{ background: COLORS.surface, borderBottom:`1px solid ${COLORS.border}` }}>
           <div style={{ maxWidth:800, margin:"0 auto", display:"flex" }}>
-            {NAV.map(n => (
-              <button key={n.id} onClick={() => setTab(n.id)} style={{ padding:"14px 20px", fontWeight:600, fontSize:14, background:"transparent", border:"none", borderBottom:`2px solid ${tab===n.id ? COLORS.accent : "transparent"}`, color: tab===n.id ? COLORS.accent : COLORS.muted, cursor:"pointer", transition:"all .2s" }}>{n.label}</button>
+            {NAV.map(n=>(
+              <button key={n.id} onClick={()=>setTab(n.id)} style={{ padding:"14px 20px", fontWeight:600, fontSize:14, background:"transparent", border:"none", borderBottom:`2px solid ${tab===n.id?COLORS.accent:"transparent"}`, color:tab===n.id?COLORS.accent:COLORS.muted, cursor:"pointer", transition:"all .2s" }}>{n.label}</button>
             ))}
           </div>
         </div>
       )}
 
-      {/* Content */}
       <div style={{ maxWidth:800, margin:"0 auto", padding:"24px 16px" }}>
         {logging ? (
-          <LogWorkout user={user} onSave={() => { loadSessions(); setLogging(false); setTab("history"); }} onCancel={() => { setLogging(false); }} />
-        ) : tab === "dashboard" ? (
+          <LogWorkout user={user} onSave={()=>{ loadSessions(); setLogging(false); setTab("history"); }} onCancel={()=>setLogging(false)} />
+        ) : tab==="dashboard" ? (
           <div className="fade-in">
             <div style={{ marginBottom:24 }}>
-              <div style={{ fontFamily:"'Bebas Neue'", fontSize:36, letterSpacing:1, color: COLORS.text }}>Hola, {user.name.split(" ")[0]} 👋</div>
-              <div style={{ color: COLORS.muted, fontSize:14 }}>{new Date().toLocaleDateString("es-ES", { weekday:"long", day:"numeric", month:"long" })}</div>
+              <div style={{ fontFamily:"'Bebas Neue'", fontSize:36, letterSpacing:1 }}>Hola, {user.name.split(" ")[0]} 👋</div>
+              <div style={{ color: COLORS.muted, fontSize:14 }}>{new Date().toLocaleDateString("es-ES",{weekday:"long",day:"numeric",month:"long"})}</div>
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:24 }}>
               <StatBox label="Esta semana" value={thisWeek} />
@@ -594,22 +480,22 @@ export default function App() {
             </div>
             <div style={{ marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <div style={{ fontWeight:700, fontSize:16 }}>Últimos entrenos</div>
-              {sessions.length > 0 && <button onClick={()=>setTab("history")} style={{ background:"none", border:"none", color: COLORS.accent, fontSize:13, cursor:"pointer", fontWeight:600 }}>Ver todos →</button>}
+              {sessions.length>0&&<button onClick={()=>setTab("history")} style={{ background:"none", border:"none", color:COLORS.accent, fontSize:13, cursor:"pointer", fontWeight:600 }}>Ver todos →</button>}
             </div>
-            {recentSessions.length === 0
+            {recentSessions.length===0
               ? <Card style={{ textAlign:"center", padding:40 }}>
                   <div style={{ fontSize:40, marginBottom:12 }}>🏋️</div>
-                  <div style={{ color: COLORS.muted, marginBottom:16 }}>Aún no tienes entrenos registrados.</div>
-                  <Btn onClick={() => setLogging(true)}>Registrar primer entreno</Btn>
+                  <div style={{ color:COLORS.muted, marginBottom:16 }}>Aún no tienes entrenos registrados.</div>
+                  <Btn onClick={()=>setLogging(true)}>Registrar primer entreno</Btn>
                 </Card>
               : <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                  {recentSessions.map(s => <SessionCard key={s.id} s={s} onDelete={() => handleDelete(s.id)} />)}
+                  {recentSessions.map(s=><SessionCard key={s.id} s={s} onDelete={()=>handleDelete(s.id)} />)}
                 </div>
             }
           </div>
-        ) : tab === "history" ? (
+        ) : tab==="history" ? (
           <HistoryView sessions={sessions} onDelete={handleDelete} />
-        ) : tab === "stats" ? (
+        ) : tab==="stats" ? (
           <StatsView sessions={sessions} />
         ) : null}
       </div>
