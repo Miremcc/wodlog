@@ -10,7 +10,7 @@ const COLORS = {
 const WOD_TYPES = ["AMRAP", "For Time", "EMOM", "Chipper", "Benchmark", "Strength", "Skill", "Hero WOD"];
 const MOVEMENTS = ["Snatch", "Clean & Jerk", "Clean", "Squat Clean", "Hang Power Clean", "Hang Squat Clean", "Deadlift", "Back Squat", "Front Squat", "Overhead Squat", "Press", "Push Press", "Thruster"];
 const BENCHMARKS = ["Fran", "Grace", "Helen", "Cindy", "Murph", "Annie", "Barbara", "Chelsea", "Elizabeth", "Jackie", "Karen", "Kelly", "Nancy", "Amanda"];
-const SKILLS =const SKILLS = ["Muscle-up (rings)", "Muscle-up (bar)", "Handstand walk", "Handstand push-up", "Double-unders", "Pistol squat", "Rope climb", "Toes-to-bar", "Kipping pull-up", "Butterfly pull-up", "Pull-up", "Wall ball", "Burpees", "Box jump", "Air squat", "Sit-ups"];
+const SKILLS = ["Muscle-up (rings)", "Muscle-up (bar)", "Handstand walk", "Handstand push-up", "Double-unders", "Pistol squat", "Rope climb", "Toes-to-bar", "Kipping pull-up", "Butterfly pull-up", "Pull-up", "Wall ball", "Burpees", "Box jump", "Air squat", "Sit-ups"];
 const MONTHS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const FULL_MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
