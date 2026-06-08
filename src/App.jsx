@@ -16,7 +16,13 @@ const FULL_MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","A
 
 function formatDate(d) { const dt = new Date(d); return `${dt.getDate()} ${MONTHS[dt.getMonth()]} ${dt.getFullYear()}`; }
 function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
-
+// Keep Supabase alive
+useEffect(() => {
+  const ping = async () => { await supabase.from("users").select("id").limit(1); };
+  ping();
+  const interval = setInterval(ping, 1000 * 60 * 60 * 24 * 5); // every 5 days
+  return () => clearInterval(interval);
+}, []);
 // Security helpers
 function hashPassword(str) {
   let hash = 5381;
