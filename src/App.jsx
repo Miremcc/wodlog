@@ -169,7 +169,7 @@ function AuthScreen({ onLogin }) {
   const titles = { login: "Entrar", register: "Crear cuenta", forgot: "Recuperar contraseña", reset: "Nueva contraseña" };
 
   return (
-  https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=1200&q=80
+ <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, backgroundImage: "url('https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=1200&q=80')", backgroundSize: "cover", backgroundPosition: "center" }}>
       <div style={{ width: "100%", maxWidth: 400 }} className="fade-in">
         <div style={{ textAlign: "center", marginBottom: 40 }}>
           <div style={{ fontFamily: "'Bebas Neue'", fontSize: 52, letterSpacing: 3, color: COLORS.accent, lineHeight: 1 }}>WOD-MCC</div>
