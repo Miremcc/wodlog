@@ -515,7 +515,7 @@ export default function App() {
   useEffect(() => { loadSessions(); }, [loadSessions]);
 
   const handleLogin = (u) => { saveSession(u); setUser(u); };
-  const handleLogout = () => { localStorage.removeItem("wodlog_user"); setUser(null); setSessions([]); };
+  const handleLogout = () => { localStorage.removeItem("WOD-MCC_user"); setUser(null); setSessions([]); };
   const handleDelete = async (id) => { await supabase.from("sessions").delete().eq("id", id); loadSessions(); };
 
   if (loadingApp) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: COLORS.bg }}><Spinner /></div>;
