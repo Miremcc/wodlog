@@ -530,7 +530,7 @@ export default function App() {
     <div style={{ background: COLORS.bg, minHeight: "100vh", color: COLORS.text }}>
       <div style={{ background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, padding: "0 20px", position: "sticky", top: 0, zIndex: 100 }}>
         <div style={{ maxWidth: 800, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", height: 56 }}>
-          <div style={{ fontFamily: "'Bebas Neue'", fontSize: 28, letterSpacing: 2, color: COLORS.accent }}>WODLOG</div>
+          <div style={{ fontFamily: "'Bebas Neue'", fontSize: 28, letterSpacing: 2, color: COLORS.accent }}>WOD-MCC</div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <Btn onClick={() => { setLogging(true); setTab("log"); }} style={{ padding: "8px 16px", fontSize: 13, animation: "pulse 2s infinite" }}>+ Entreno</Btn>
             <button onClick={handleLogout} style={{ background: "none", border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "7px 12px", color: COLORS.muted, fontSize: 13, cursor: "pointer" }}>Salir</button>
