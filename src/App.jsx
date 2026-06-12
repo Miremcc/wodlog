@@ -173,7 +173,7 @@ function AuthScreen({ onLogin }) {
       <div style={{ width: "100%", maxWidth: 400 }} className="fade-in">
         <div style={{ textAlign: "center", marginBottom: 40 }}>
           <div style={{ fontFamily: "'Bebas Neue'", fontSize: 52, letterSpacing: 3, color: COLORS.accent, lineHeight: 1 }}>WOD-MCC</div>
-        <div style={{ color: "#000000", fontSize: 13, letterSpacing: 2, marginTop: 4 }}>CROSSFIT TRACKER</div>
+     <div style={{ color: "#000000", fontSize: 16, letterSpacing: 2, marginTop: 4, fontWeight: 700 }}>CROSSFIT TRACKER</div>
         </div>
         <Card>
           {(mode === "login" || mode === "register") && (
