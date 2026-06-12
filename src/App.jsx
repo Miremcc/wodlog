@@ -42,13 +42,13 @@ function recordFailedAttempt(username) {
 function clearLoginAttempts(username) { delete loginAttempts[username]; }
 function saveSession(user) {
   const session = { ...user, expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000 };
-  localStorage.setItem("wodlog_user", JSON.stringify(session));
+  localStorage.setItem("woad-mcc_user", JSON.stringify(session));
 }
 function loadSession() {
   try {
-    const s = JSON.parse(localStorage.getItem("wodlog_user"));
+    const s = JSON.parse(localStorage.getItem("wod-mcc_user"));
     if (!s) return null;
-    if (s.expiresAt && Date.now() > s.expiresAt) { localStorage.removeItem("wodlog_user"); return null; }
+    if (s.expiresAt && Date.now() > s.expiresAt) { localStorage.removeItem("wod-mcc_user"); return null; }
     return s;
   } catch { return null; }
 }
