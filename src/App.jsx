@@ -4,7 +4,7 @@ import { supabase } from "./supabase";
 const COLORS = {
   bg: "#0a0a0f", surface: "#12121a", card: "#1a1a26", border: "#2a2a3e",
   accent: "#ff4d1c", accentDim: "#ff4d1c33", gold: "#f5a623",
-  text: "#f0f0f8", muted: "#7070a0", green: "#00e5a0", blue: "#4d9fff",
+  text: "#f0f0f8", muted: "#ffffff", green: "#00e5a0", blue: "#4d9fff",
 };
 
 const WOD_TYPES = ["AMRAP", "For Time", "EMOM", "Chipper", "Benchmark", "Strength", "Skill", "Hero WOD"];
