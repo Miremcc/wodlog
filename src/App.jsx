@@ -41,7 +41,7 @@ function recordFailedAttempt(username) {
 }
 function clearLoginAttempts(username) { delete loginAttempts[username]; }
 function saveSession(user) {
-  const session = { ...user, expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000 };
+  const session = { ...user, expiresAt: Date.now() + 60 * 24 * 60 * 60 * 1000 };
   localStorage.setItem("woad-mcc_user", JSON.stringify(session));
 }
 function loadSession() {
