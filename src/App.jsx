@@ -42,9 +42,23 @@ function recordFailedAttempt(username) {
 function clearLoginAttempts(username) { delete loginAttempts[username]; }
 function saveSession(user) {
   const session = { ...user, expiresAt: Date.now() + 60 * 24 * 60 * 60 * 1000 };
-  localStorage.setItem("woad-mcc_user", JSON.stringify(session));
+  const expires = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toUTCString();
+  document.cookie = `wod_mcc_user=${encodeURIComponent(JSON.stringify(session))}; expires=${expires}; path=/; SameSite=Lax`;
+  localStorage.setItem("wod-mcc_user", JSON.stringify(session));
 }
 function loadSession() {
+  try {
+    const match = document.cookie.split('; ').find(r => r.startsWith('wod_mcc_user='));
+    if (match) {
+      const s = JSON.parse(decodeURIComponent(match.split('=')[1]));
+      if (s && s.expiresAt && Date.now() < s.expiresAt) return s;
+    }
+    const s = JSON.parse(localStorage.getItem("wod-mcc_user"));
+    if (!s) return null;
+    if (s.expiresAt && Date.now() > s.expiresAt) { localStorage.removeItem("wod-mcc_user"); return null; }
+    return s;
+  } catch { return null; }
+}
   try {
     const s = JSON.parse(localStorage.getItem("wod-mcc_user"));
     if (!s) return null;
