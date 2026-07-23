@@ -227,7 +227,7 @@ function AuthScreen({ onLogin }) {
               <input placeholder="Email" type="email" value={form.email} onChange={F("email")} />
             </>}
             {(mode === "login" || mode === "register") && (
-              <input placeholder="Usuario" value={form.username} onChange={F("username")} onKeyDown={e => e.key === "Enter" && handleSubmit()} />
+             <input placeholder="Usuario" value={form.username} onChange={F("username")} onKeyDown={e => e.key === "Enter" && handleSubmit()} autoComplete="username" />
             )}
             {(mode === "forgot" || mode === "reset") && (
               <input placeholder="Email" type="email" value={form.email} onChange={F("email")} />
