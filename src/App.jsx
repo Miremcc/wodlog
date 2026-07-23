@@ -45,6 +45,11 @@ function saveSession(user) {
   const expires = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toUTCString();
   document.cookie = `wod_mcc_user=${encodeURIComponent(JSON.stringify(session))}; expires=${expires}; path=/; SameSite=Lax`;
   localStorage.setItem("wod-mcc_user", JSON.stringify(session));
+  const sessionId = uid();
+  supabase.from("user_sessions").insert({ id: sessionId, username: user.username, name: user.name, expires_at: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString() }).then(() => {
+    document.cookie = `wod_mcc_sid=${sessionId}; expires=${expires}; path=/; SameSite=Lax`;
+    localStorage.setItem("wod-mcc_sid", sessionId);
+  });
 }
 function loadSession() {
   try {
@@ -57,6 +62,17 @@ function loadSession() {
     if (!s) return null;
     if (s.expiresAt && Date.now() > s.expiresAt) { localStorage.removeItem("wod-mcc_user"); return null; }
     return s;
+  } catch { return null; }
+}
+async function loadSessionFromDB() {
+  try {
+    const sidMatch = document.cookie.split('; ').find(r => r.startsWith('wod_mcc_sid='));
+    const sid = sidMatch ? sidMatch.split('=')[1] : localStorage.getItem("wod-mcc_sid");
+    if (!sid) return null;
+    const { data } = await supabase.from("user_sessions").select("*").eq("id", sid).maybeSingle();
+    if (!data) return null;
+    if (new Date(data.expires_at) < new Date()) return null;
+    return { username: data.username, name: data.name };
   } catch { return null; }
 }
   try {
