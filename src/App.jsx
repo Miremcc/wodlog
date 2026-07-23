@@ -530,9 +530,16 @@ export default function App() {
     const style = document.createElement("style");
     style.textContent = GLOBAL_CSS;
     document.head.appendChild(style);
-    const saved = loadSession();
-    if (saved) setUser(saved);
-    setLoadingApp(false);
+   const saved = loadSession();
+    if (saved) {
+      setUser(saved);
+      setLoadingApp(false);
+    } else {
+      loadSessionFromDB().then(dbUser => {
+        if (dbUser) setUser(dbUser);
+        setLoadingApp(false);
+      });
+    }
     return () => document.head.removeChild(style);
   }, []);
 
