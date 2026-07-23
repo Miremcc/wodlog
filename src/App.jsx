@@ -237,7 +237,7 @@ function AuthScreen({ onLogin }) {
             )}
             {(mode === "login" || mode === "register" || mode === "reset") && <>
               <div>
-                <input type="password" placeholder={mode === "reset" ? "Nueva contraseña" : "Contraseña"} value={form.password} onChange={F("password")} onKeyDown={e => e.key === "Enter" && handleSubmit()} />
+                <input type="password" placeholder="Contraseña" value={form.password} onChange={F("password")} onKeyDown={e => e.key === "Enter" && handleSubmit()} autoComplete="current-password" />
                 {strength && (
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
                     <div style={{ flex: 1, height: 3, borderRadius: 2, background: COLORS.border }}>
