@@ -558,7 +558,7 @@ export default function App() {
   if (loadingApp) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: COLORS.bg }}><Spinner /></div>;
   if (!user) return <AuthScreen onLogin={handleLogin} />;
 
-  const NAV = [{ id: "dashboard", label: "📊 Inicio" }, { id: "history", label: "📋 Historial" }, { id: "stats", label: "📈 Estadísticas" }];
+  const NAV = [{ id: "dashboard", label: "📊 Inicio" }, { id: "history", label: "📋 Historial" }, { id: "stats", label: "📈 Estadísticas" }, { id: "pelvic", label: "🧘 Pelvic" }];
   const recentSessions = [...sessions].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
   const thisWeek = sessions.filter(s => (new Date() - new Date(s.date)) / (1000 * 60 * 60 * 24) <= 7).length;
   const thisMonth = sessions.filter(s => { const d = new Date(s.date); const n = new Date(); return d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear(); }).length;
