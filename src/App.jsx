@@ -616,8 +616,10 @@ export default function App() {
           </div>
         ) : tab === "history" ? (
           <HistoryView sessions={sessions} onDelete={handleDelete} />
-        ) : tab === "stats" ? (
+       tab === "stats" ? (
           <StatsView sessions={sessions} />
+        ) : tab === "pelvic" ? (
+          <PelvicCoach />
         ) : null}
       </div>
     </div>
