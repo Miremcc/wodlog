@@ -16,9 +16,7 @@ const FULL_MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","A
 
 function formatDate(d) { const dt = new Date(d); return `${dt.getDate()} ${MONTHS[dt.getMonth()]} ${dt.getFullYear()}`; }
 function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
-// Keep Supabase alive
 
-// Security helpers
 function hashPassword(str) {
   let hash = 5381;
   for (let i = 0; i < str.length; i++) { hash = ((hash << 5) + hash) ^ str.charCodeAt(i); hash = hash >>> 0; }
@@ -40,17 +38,14 @@ function recordFailedAttempt(username) {
   if (loginAttempts[username].count >= 5) loginAttempts[username].blockedUntil = now + 5 * 60 * 1000;
 }
 function clearLoginAttempts(username) { delete loginAttempts[username]; }
+
 function saveSession(user) {
-  const session = { ...user, expiresAt: Date.now() + 60 * 24 * 60 * 60 * 1000 };
   const expires = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toUTCString();
-  document.cookie = `wod_mcc_user=${encodeURIComponent(JSON.stringify(session))}; expires=${expires}; path=/; SameSite=Lax`;
+  const session = { ...user, expiresAt: Date.now() + 60 * 24 * 60 * 60 * 1000 };
   localStorage.setItem("wod-mcc_user", JSON.stringify(session));
-  const sessionId = uid();
-  supabase.from("user_sessions").insert({ id: sessionId, username: user.username, name: user.name, expires_at: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString() }).then(() => {
-    document.cookie = `wod_mcc_sid=${sessionId}; expires=${expires}; path=/; SameSite=Lax`;
-    localStorage.setItem("wod-mcc_sid", sessionId);
-  });
+  document.cookie = `wod_mcc_user=${encodeURIComponent(JSON.stringify(session))}; expires=${expires}; path=/; SameSite=Lax`;
 }
+
 function loadSession() {
   try {
     const match = document.cookie.split('; ').find(r => r.startsWith('wod_mcc_user='));
@@ -58,24 +53,6 @@ function loadSession() {
       const s = JSON.parse(decodeURIComponent(match.split('=')[1]));
       if (s && s.expiresAt && Date.now() < s.expiresAt) return s;
     }
-    const s = JSON.parse(localStorage.getItem("wod-mcc_user"));
-    if (!s) return null;
-    if (s.expiresAt && Date.now() > s.expiresAt) { localStorage.removeItem("wod-mcc_user"); return null; }
-    return s;
-  } catch { return null; }
-}
-async function loadSessionFromDB() {
-  try {
-    const sidMatch = document.cookie.split('; ').find(r => r.startsWith('wod_mcc_sid='));
-    const sid = sidMatch ? sidMatch.split('=')[1] : localStorage.getItem("wod-mcc_sid");
-    if (!sid) return null;
-    const { data } = await supabase.from("user_sessions").select("*").eq("id", sid).maybeSingle();
-    if (!data) return null;
-    if (new Date(data.expires_at) < new Date()) return null;
-    return { username: data.username, name: data.name };
-  } catch { return null; }
-}
-  try {
     const s = JSON.parse(localStorage.getItem("wod-mcc_user"));
     if (!s) return null;
     if (s.expiresAt && Date.now() > s.expiresAt) { localStorage.removeItem("wod-mcc_user"); return null; }
@@ -121,7 +98,6 @@ function StatBox({ label, value, sub, color = COLORS.accent }) {
 }
 function Spinner() { return <div style={{ width: 20, height: 20, border: `2px solid ${COLORS.border}`, borderTop: `2px solid ${COLORS.accent}`, borderRadius: "50%", animation: "spin .7s linear infinite", margin: "0 auto" }} />; }
 
-// Auth Screen
 function AuthScreen({ onLogin }) {
   const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ username: "", password: "", password2: "", name: "", email: "", resetCode: "" });
@@ -153,11 +129,10 @@ function AuthScreen({ onLogin }) {
         const { error } = await supabase.from("users").insert({ username: form.username, password: hashPassword(form.password), name: form.name, email: form.email });
         if (error) { setErr("Error al crear cuenta: " + error.message); return; }
         onLogin({ username: form.username, name: form.name });
-
       } else if (mode === "login") {
         if (!form.username || !form.password) { setErr("Rellena todos los campos."); return; }
         const attempt = checkLoginAttempts(form.username);
-        if (attempt.blocked) { setErr(`Demasiados intentos fallidos. Espera ${attempt.secs} segundos.`); return; }
+        if (attempt.blocked) { setErr(`Demasiados intentos. Espera ${attempt.secs} segundos.`); return; }
         const { data, error } = await supabase.from("users").select("*").eq("username", form.username).eq("password", hashPassword(form.password)).maybeSingle();
         if (error || !data) {
           recordFailedAttempt(form.username);
@@ -167,7 +142,6 @@ function AuthScreen({ onLogin }) {
         }
         clearLoginAttempts(form.username);
         onLogin({ username: data.username, name: data.name });
-
       } else if (mode === "forgot") {
         if (!form.email) { setErr("Introduce tu email."); return; }
         const { data } = await supabase.from("users").select("*").eq("email", form.email).maybeSingle();
@@ -175,9 +149,8 @@ function AuthScreen({ onLogin }) {
         const token = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
         const expires = new Date(Date.now() + 1000 * 60 * 30).toISOString();
         await supabase.from("users").update({ reset_token: token, reset_expires: expires }).eq("email", form.email);
-        setOk(`Tu código de recuperación es:\n\n${token.slice(0, 8).toUpperCase()}\n\nCópialo, lo necesitarás ahora. Expira en 30 minutos.`);
+        setOk(`Tu código de recuperación es:\n\n${token.slice(0, 8).toUpperCase()}\n\nCópialo. Expira en 30 minutos.`);
         setTimeout(() => setMode("reset"), 4000);
-
       } else if (mode === "reset") {
         if (!form.email || !form.resetCode || !form.password) { setErr("Rellena todos los campos."); return; }
         if (form.password !== form.password2) { setErr("Las contraseñas no coinciden."); return; }
@@ -185,25 +158,23 @@ function AuthScreen({ onLogin }) {
         const { data } = await supabase.from("users").select("*").eq("email", form.email).maybeSingle();
         if (!data) { setErr("Email no encontrado."); return; }
         if (!data.reset_token || data.reset_token.slice(0, 8).toUpperCase() !== form.resetCode.toUpperCase()) { setErr("Código incorrecto."); return; }
-        if (new Date(data.reset_expires) < new Date()) { setErr("El código ha expirado. Solicita uno nuevo."); return; }
+        if (new Date(data.reset_expires) < new Date()) { setErr("El código ha expirado."); return; }
         await supabase.from("users").update({ password: hashPassword(form.password), reset_token: null, reset_expires: null }).eq("email", form.email);
-        setOk("¡Contraseña cambiada! Ya puedes iniciar sesión.");
+        setOk("Contraseña cambiada. Ya puedes iniciar sesión.");
         setTimeout(() => setMode("login"), 2000);
       }
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const F = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
   const titles = { login: "Entrar", register: "Crear cuenta", forgot: "Recuperar contraseña", reset: "Nueva contraseña" };
 
   return (
- <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, backgroundImage: "url('https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=1200&q=80')", backgroundSize: "cover", backgroundPosition: "center" }}>
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, backgroundImage: "url('https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=1200&q=80')", backgroundSize: "cover", backgroundPosition: "center" }}>
       <div style={{ width: "100%", maxWidth: 400 }} className="fade-in">
         <div style={{ textAlign: "center", marginBottom: 40 }}>
           <div style={{ fontFamily: "'Bebas Neue'", fontSize: 52, letterSpacing: 3, color: COLORS.accent, lineHeight: 1 }}>WOD-MCC</div>
- <div style={{ color: "#ff4d1c", fontSize: 16, letterSpacing: 3, marginTop: 4, fontWeight: 700 }}>CROSSFIT TRACKER</div>
+          <div style={{ color: "#ff4d1c", fontSize: 16, letterSpacing: 3, marginTop: 4, fontWeight: 700 }}>CROSSFIT TRACKER</div>
         </div>
         <Card>
           {(mode === "login" || mode === "register") && (
@@ -227,7 +198,7 @@ function AuthScreen({ onLogin }) {
               <input placeholder="Email" type="email" value={form.email} onChange={F("email")} />
             </>}
             {(mode === "login" || mode === "register") && (
-             <input placeholder="Usuario" value={form.username} onChange={F("username")} onKeyDown={e => e.key === "Enter" && handleSubmit()} autoComplete="username" />
+              <input placeholder="Usuario" value={form.username} onChange={F("username")} onKeyDown={e => e.key === "Enter" && handleSubmit()} autoComplete="username" />
             )}
             {(mode === "forgot" || mode === "reset") && (
               <input placeholder="Email" type="email" value={form.email} onChange={F("email")} />
@@ -237,7 +208,7 @@ function AuthScreen({ onLogin }) {
             )}
             {(mode === "login" || mode === "register" || mode === "reset") && <>
               <div>
-                <input type="password" placeholder="Contraseña" value={form.password} onChange={F("password")} onKeyDown={e => e.key === "Enter" && handleSubmit()} autoComplete="current-password" />
+                <input type="password" placeholder={mode === "reset" ? "Nueva contraseña" : "Contraseña"} value={form.password} onChange={F("password")} onKeyDown={e => e.key === "Enter" && handleSubmit()} autoComplete="current-password" />
                 {strength && (
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
                     <div style={{ flex: 1, height: 3, borderRadius: 2, background: COLORS.border }}>
@@ -258,7 +229,7 @@ function AuthScreen({ onLogin }) {
             </Btn>
             {mode === "login" && (
               <button onClick={() => { setMode("forgot"); setErr(""); setOk(""); }} style={{ background: "none", border: "none", color: COLORS.muted, fontSize: 13, cursor: "pointer", textAlign: "center", marginTop: 4 }}>
-                ¿Olvidaste tu contraseña?
+                Olvidaste tu contraseña?
               </button>
             )}
           </div>
@@ -272,7 +243,6 @@ function AuthScreen({ onLogin }) {
   );
 }
 
-// Log Workout
 function LogWorkout({ user, onSave, onCancel }) {
   const [type, setType] = useState("WOD");
   const [loading, setLoading] = useState(false);
@@ -321,7 +291,6 @@ function LogWorkout({ user, onSave, onCancel }) {
           </div>
         </div>
         <div><Label>Fecha</Label><input type="date" value={form.date} onChange={F("date")} /></div>
-
         {type === "WOD" && <>
           <div><Label>Categoría</Label><select value={form.category} onChange={F("category")}>{WOD_TYPES.map(w => <option key={w}>{w}</option>)}</select></div>
           <div><Label>Descripción del WOD</Label><textarea rows={3} placeholder="Ej: 21-15-9 Thrusters 43kg / Pull-ups" value={form.description} onChange={F("description")} style={{ resize: "vertical" }} /></div>
@@ -333,13 +302,11 @@ function LogWorkout({ user, onSave, onCancel }) {
             <span style={{ fontSize: 14, color: form.rx ? COLORS.green : COLORS.muted, fontWeight: 600 }}>RX {form.rx ? "✓" : ""}</span>
           </div>
         </>}
-
         {type === "Levantamiento" && <>
           <div><Label>Movimiento</Label><select value={form.movement} onChange={F("movement")}>{MOVEMENTS.map(m => <option key={m}>{m}</option>)}</select></div>
           <div><Label>Peso (1RM o máximo)</Label><div style={{ display: "flex", gap: 8 }}><input type="number" placeholder="100" value={form.weight} onChange={F("weight")} /><select value={form.weightUnit} onChange={F("weightUnit")} style={{ width: 80 }}>{["kg", "lb"].map(u => <option key={u}>{u}</option>)}</select></div></div>
           <div><Label>Series x Reps (opcional)</Label><input placeholder="Ej: 5x3, 3x1" value={form.reps} onChange={F("reps")} /></div>
         </>}
-
         {type === "Benchmark" && <>
           <div><Label>Benchmark</Label><select value={form.benchmark} onChange={F("benchmark")}>{BENCHMARKS.map(b => <option key={b}>{b}</option>)}</select></div>
           <div><Label>Resultado</Label><div style={{ display: "flex", gap: 8 }}><input placeholder="Ej: 3:02" value={form.result} onChange={F("result")} /><select value={form.resultUnit} onChange={F("resultUnit")} style={{ width: 100 }}>{["min", "seg", "rondas", "reps"].map(u => <option key={u}>{u}</option>)}</select></div></div>
@@ -350,12 +317,10 @@ function LogWorkout({ user, onSave, onCancel }) {
             <span style={{ fontSize: 14, color: form.rx ? COLORS.green : COLORS.muted, fontWeight: 600 }}>RX {form.rx ? "✓" : ""}</span>
           </div>
         </>}
-
         {type === "Skill" && <>
           <div><Label>Habilidad</Label><select value={form.skill} onChange={F("skill")}>{SKILLS.map(s => <option key={s}>{s}</option>)}</select></div>
           <div><Label>Nivel</Label><select value={form.skillLevel} onChange={F("skillLevel")}>{["Logrado", "En progreso", "Primera vez", "PR nuevo"].map(l => <option key={l}>{l}</option>)}</select></div>
         </>}
-
         <div>
           <Label>Sensación ({form.rating}/5)</Label>
           <div style={{ display: "flex", gap: 6 }}>
@@ -400,186 +365,12 @@ function SessionCard({ s, onDelete }) {
     </div>
   );
 }
-// ── Pelvic Coach ──────────────────────────────────────────────────────────────
-const EXERCISES = [
-  { name: "Respiración + Transverso", duration: 120, cue: "Inspira profundamente. Al exhalar, activa el transverso." },
-  { name: "Heel Slides", duration: 120, cue: "Desliza el talón lentamente. Mantén el core activo." },
-  { name: "Dead Bug", duration: 180, cue: "Estira brazo y pierna contrarios. Espalda pegada al suelo." },
-  { name: "Bird Dog", duration: 180, cue: "Alarga brazo y pierna. Controla el equilibrio." },
-  { name: "Puente", duration: 120, cue: "Sube la cadera lentamente. Aprieta glúteos arriba." },
-  { name: "Plancha", duration: 120, cue: "Cuerpo recto. Activa el suelo pélvico y el core." },
-  { name: "Sentadilla", duration: 60, cue: "Baja controlando. Exhala al subir." },
-];
 
-function speak(text) {
-  if (!window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = "es-ES";
-  u.rate = 0.9;
-  window.speechSynthesis.speak(u);
-}
-
-function PelvicCoach() {
-  const [started, setStarted] = useState(false);
-  const [current, setCurrent] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(EXERCISES[0].duration);
-  const [paused, setPaused] = useState(false);
-  const [finished, setFinished] = useState(false);
-  const timerRef = useState(null);
-
-  const totalTime = EXERCISES.reduce((a, e) => a + e.duration, 0);
-  const elapsed = EXERCISES.slice(0, current).reduce((a, e) => a + e.duration, 0) + (EXERCISES[current].duration - timeLeft);
-  const progress = Math.round((elapsed / totalTime) * 100);
-
-  useEffect(() => {
-    if (!started || paused || finished) return;
-    timerRef[1](setInterval(() => {
-      setTimeLeft(t => {
-        if (t <= 1) {
-          if (current < EXERCISES.length - 1) {
-            const next = current + 1;
-            setCurrent(next);
-            setTimeLeft(EXERCISES[next].duration);
-            speak(`Siguiente: ${EXERCISES[next].name}. ${EXERCISES[next].cue}`);
-          } else {
-            setFinished(true);
-            speak("¡Excelente trabajo! Has completado la rutina.");
-          }
-          return 0;
-        }
-        if (t === 30) speak("Quedan treinta segundos.");
-        return t - 1;
-      });
-    }, 1000));
-    return () => clearInterval(timerRef[0]);
-  }, [started, paused, current, finished]);
-
-  const handleStart = () => {
-    setStarted(true);
-    speak(`Bienvenida. Hoy realizaremos una rutina de quince minutos. Empezamos con ${EXERCISES[0].name}. ${EXERCISES[0].cue}`);
-  };
-
-  const handlePause = () => {
-    setPaused(p => {
-      if (!p) { clearInterval(timerRef[0]); speak("Pausa."); }
-      else speak("Continuamos.");
-      return !p;
-    });
-  };
-
-  const handlePrev = () => {
-    if (current > 0) {
-      const prev = current - 1;
-      setCurrent(prev);
-      setTimeLeft(EXERCISES[prev].duration);
-      speak(`${EXERCISES[prev].name}. ${EXERCISES[prev].cue}`);
-    }
-  };
-
-  const handleNext = () => {
-    if (current < EXERCISES.length - 1) {
-      const next = current + 1;
-      setCurrent(next);
-      setTimeLeft(EXERCISES[next].duration);
-      speak(`${EXERCISES[next].name}. ${EXERCISES[next].cue}`);
-    }
-  };
-
-  const handleRestart = () => {
-    setCurrent(0);
-    setTimeLeft(EXERCISES[0].duration);
-    setPaused(false);
-    setFinished(false);
-    setStarted(false);
-    window.speechSynthesis.cancel();
-  };
-
-  const mins = Math.floor(timeLeft / 60);
-  const secs = String(timeLeft % 60).padStart(2, "0");
-
-  if (!started) return (
-    <div className="fade-in" style={{ maxWidth: 420, margin: "0 auto", textAlign: "center", padding: "40px 20px" }}>
-      <div style={{ fontSize: 60, marginBottom: 16 }}>🧘</div>
-      <div style={{ fontFamily: "'Bebas Neue'", fontSize: 40, letterSpacing: 2, color: COLORS.text, marginBottom: 8 }}>Pelvic Coach</div>
-      <div style={{ color: COLORS.muted, fontSize: 15, marginBottom: 32 }}>Rutina de suelo pélvico · 15 minutos</div>
-      <Card style={{ marginBottom: 24, textAlign: "left" }}>
-        {EXERCISES.map((e, i) => (
-          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: i < EXERCISES.length - 1 ? `1px solid ${COLORS.border}` : "none" }}>
-            <span style={{ fontWeight: 600, fontSize: 14 }}>{i + 1}. {e.name}</span>
-            <span style={{ color: COLORS.muted, fontSize: 13 }}>{Math.floor(e.duration / 60)} min</span>
-          </div>
-        ))}
-      </Card>
-      <Btn onClick={handleStart} style={{ padding: "16px 40px", fontSize: 18, width: "100%" }}>▶ Iniciar rutina</Btn>
-    </div>
-  );
-
-  if (finished) return (
-    <div className="fade-in" style={{ maxWidth: 420, margin: "0 auto", textAlign: "center", padding: "60px 20px" }}>
-      <div style={{ fontSize: 80, marginBottom: 16 }}>🎉</div>
-      <div style={{ fontFamily: "'Bebas Neue'", fontSize: 40, color: COLORS.green, marginBottom: 8 }}>¡Rutina completada!</div>
-      <div style={{ color: COLORS.muted, marginBottom: 32 }}>Excelente trabajo. Tu cuerpo te lo agradece.</div>
-      <Btn onClick={handleRestart} style={{ padding: "14px 32px", fontSize: 16 }}>Volver a empezar</Btn>
-    </div>
-  );
-
-  return (
-    <div className="fade-in" style={{ maxWidth: 420, margin: "0 auto", padding: "20px" }}>
-      {/* Progress */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: COLORS.muted, marginBottom: 6 }}>
-          <span>Ejercicio {current + 1} de {EXERCISES.length}</span>
-          <span>{progress}%</span>
-        </div>
-        <div style={{ height: 6, background: COLORS.border, borderRadius: 3 }}>
-          <div style={{ height: "100%", background: COLORS.green, borderRadius: 3, width: `${progress}%`, transition: "width .5s" }} />
-        </div>
-      </div>
-
-      {/* Exercise card */}
-      <Card style={{ textAlign: "center", padding: "32px 20px", marginBottom: 20 }}>
-        <div style={{ fontSize: 80, marginBottom: 16 }}>🧘</div>
-        <div style={{ fontFamily: "'Bebas Neue'", fontSize: 28, letterSpacing: 1, marginBottom: 8 }}>{EXERCISES[current].name}</div>
-        <div style={{ fontFamily: "'Bebas Neue'", fontSize: 64, color: timeLeft <= 10 ? "#ff6060" : COLORS.accent, letterSpacing: 2, marginBottom: 8 }}>
-          {mins}:{secs}
-        </div>
-        <div style={{ height: 4, background: COLORS.border, borderRadius: 2, marginBottom: 16 }}>
-          <div style={{ height: "100%", background: COLORS.accent, borderRadius: 2, width: `${(timeLeft / EXERCISES[current].duration) * 100}%`, transition: "width 1s linear" }} />
-        </div>
-        <div style={{ color: COLORS.muted, fontSize: 14, fontStyle: "italic" }}>{EXERCISES[current].cue}</div>
-      </Card>
-
-      {/* Controls */}
-      <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
-        <Btn variant="ghost" onClick={handlePrev} disabled={current === 0} style={{ flex: 1, fontSize: 20, padding: "14px 0" }}>⏮</Btn>
-        <Btn onClick={handlePause} style={{ flex: 2, fontSize: 20, padding: "14px 0", background: paused ? COLORS.green : COLORS.accent }}>
-          {paused ? "▶" : "⏸"}
-        </Btn>
-        <Btn variant="ghost" onClick={handleNext} disabled={current === EXERCISES.length - 1} style={{ flex: 1, fontSize: 20, padding: "14px 0" }}>⏭</Btn>
-      </div>
-
-      {/* Exercise list */}
-      <div style={{ marginTop: 24 }}>
-        {EXERCISES.map((e, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${COLORS.border}`, opacity: i < current ? .4 : 1 }}>
-            <div style={{ width: 24, height: 24, borderRadius: 12, background: i < current ? COLORS.green : i === current ? COLORS.accent : COLORS.border, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "#fff", flexShrink: 0 }}>
-              {i < current ? "✓" : i + 1}
-            </div>
-            <span style={{ fontSize: 14, fontWeight: i === current ? 700 : 400, color: i === current ? COLORS.text : COLORS.muted }}>{e.name}</span>
-            <span style={{ marginLeft: "auto", fontSize: 12, color: COLORS.muted }}>{Math.floor(e.duration / 60)} min</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 function StatsView({ sessions }) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
   const [view, setView] = useState("monthly");
-
   const yearSessions = sessions.filter(s => new Date(s.date).getFullYear() === year);
   const monthSessions = yearSessions.filter(s => new Date(s.date).getMonth() === month);
   const target = view === "monthly" ? monthSessions : yearSessions;
@@ -595,7 +386,6 @@ function StatsView({ sessions }) {
   });
   const types = byType(target);
   const availableYears = [...new Set(sessions.map(s => new Date(s.date).getFullYear()))].sort((a, b) => b - a);
-
   return (
     <div className="fade-in">
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
@@ -611,7 +401,6 @@ function StatsView({ sessions }) {
         </select>
         {view === "monthly" && <select value={month} onChange={e => setMonth(+e.target.value)} style={{ width: 130 }}>{FULL_MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}</select>}
       </div>
-
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 10, marginBottom: 20 }}>
         <StatBox label="Entrenos" value={target.length} />
         <StatBox label="WODs" value={types.WOD || 0} />
@@ -620,7 +409,6 @@ function StatsView({ sessions }) {
         <StatBox label="Skills" value={types.Skill || 0} color={COLORS.green} />
         <StatBox label="% RX" value={rxPct + "%"} color={COLORS.green} sub="sobre WODs/Bench" />
       </div>
-
       {view === "annual" && (
         <Card style={{ marginBottom: 16 }}>
           <div style={{ fontWeight: 700, marginBottom: 16 }}>Entrenos por mes — {year}</div>
@@ -635,7 +423,6 @@ function StatsView({ sessions }) {
           </div>
         </Card>
       )}
-
       {Object.keys(liftPRs).length > 0 && (
         <Card style={{ marginBottom: 16 }}>
           <div style={{ fontWeight: 700, marginBottom: 14 }}>🏆 Récords personales (PRs)</div>
@@ -650,7 +437,6 @@ function StatsView({ sessions }) {
           ))}
         </Card>
       )}
-
       {sessions.filter(s => s.type === "Benchmark").length > 0 && (
         <Card>
           <div style={{ fontWeight: 700, marginBottom: 14 }}>⏱ Mejores tiempos Benchmarks</div>
@@ -692,6 +478,140 @@ function HistoryView({ sessions, onDelete }) {
   );
 }
 
+const EXERCISES = [
+  { name: "Respiración + Transverso", duration: 120, cue: "Inspira profundamente. Al exhalar, activa el transverso." },
+  { name: "Heel Slides", duration: 120, cue: "Desliza el talón lentamente. Mantén el core activo." },
+  { name: "Dead Bug", duration: 180, cue: "Estira brazo y pierna contrarios. Espalda pegada al suelo." },
+  { name: "Bird Dog", duration: 180, cue: "Alarga brazo y pierna. Controla el equilibrio." },
+  { name: "Puente", duration: 120, cue: "Sube la cadera lentamente. Aprieta glúteos arriba." },
+  { name: "Plancha", duration: 120, cue: "Cuerpo recto. Activa el suelo pélvico y el core." },
+  { name: "Sentadilla", duration: 60, cue: "Baja controlando. Exhala al subir." },
+];
+
+function speak(text) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "es-ES";
+  u.rate = 0.9;
+  window.speechSynthesis.speak(u);
+}
+
+function PelvicCoach() {
+  const [started, setStarted] = useState(false);
+  const [current, setCurrent] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(EXERCISES[0].duration);
+  const [paused, setPaused] = useState(false);
+  const [finished, setFinished] = useState(false);
+
+  const totalTime = EXERCISES.reduce((a, e) => a + e.duration, 0);
+  const elapsed = EXERCISES.slice(0, current).reduce((a, e) => a + e.duration, 0) + (EXERCISES[current].duration - timeLeft);
+  const progress = Math.round((elapsed / totalTime) * 100);
+
+  useEffect(() => {
+    if (!started || paused || finished) return;
+    const id = setInterval(() => {
+      setTimeLeft(t => {
+        if (t <= 1) {
+          setCurrent(c => {
+            if (c < EXERCISES.length - 1) {
+              const next = c + 1;
+              setTimeLeft(EXERCISES[next].duration);
+              setTimeout(() => speak(`Siguiente: ${EXERCISES[next].name}. ${EXERCISES[next].cue}`), 100);
+              return next;
+            } else {
+              setFinished(true);
+              setTimeout(() => speak("Excelente trabajo. Has completado la rutina."), 100);
+              return c;
+            }
+          });
+          return 0;
+        }
+        if (t === 30) speak("Quedan treinta segundos.");
+        return t - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [started, paused, current, finished]);
+
+  const handleStart = () => {
+    setStarted(true);
+    speak(`Bienvenida. Hoy realizaremos una rutina de quince minutos. Empezamos con ${EXERCISES[0].name}. ${EXERCISES[0].cue}`);
+  };
+  const handlePause = () => { setPaused(p => { if (!p) speak("Pausa."); else speak("Continuamos."); return !p; }); };
+  const handlePrev = () => { if (current > 0) { const prev = current - 1; setCurrent(prev); setTimeLeft(EXERCISES[prev].duration); speak(`${EXERCISES[prev].name}. ${EXERCISES[prev].cue}`); } };
+  const handleNext = () => { if (current < EXERCISES.length - 1) { const next = current + 1; setCurrent(next); setTimeLeft(EXERCISES[next].duration); speak(`${EXERCISES[next].name}. ${EXERCISES[next].cue}`); } };
+  const handleRestart = () => { setCurrent(0); setTimeLeft(EXERCISES[0].duration); setPaused(false); setFinished(false); setStarted(false); window.speechSynthesis.cancel(); };
+
+  const mins = Math.floor(timeLeft / 60);
+  const secs = String(timeLeft % 60).padStart(2, "0");
+
+  if (!started) return (
+    <div className="fade-in" style={{ maxWidth: 420, margin: "0 auto", textAlign: "center", padding: "40px 20px" }}>
+      <div style={{ fontSize: 60, marginBottom: 16 }}>🧘</div>
+      <div style={{ fontFamily: "'Bebas Neue'", fontSize: 40, letterSpacing: 2, color: COLORS.text, marginBottom: 8 }}>Pelvic Coach</div>
+      <div style={{ color: COLORS.muted, fontSize: 15, marginBottom: 32 }}>Rutina de suelo pélvico · 15 minutos</div>
+      <Card style={{ marginBottom: 24, textAlign: "left" }}>
+        {EXERCISES.map((e, i) => (
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: i < EXERCISES.length - 1 ? `1px solid ${COLORS.border}` : "none" }}>
+            <span style={{ fontWeight: 600, fontSize: 14 }}>{i + 1}. {e.name}</span>
+            <span style={{ color: COLORS.muted, fontSize: 13 }}>{Math.floor(e.duration / 60)} min</span>
+          </div>
+        ))}
+      </Card>
+      <Btn onClick={handleStart} style={{ padding: "16px 40px", fontSize: 18, width: "100%" }}>▶ Iniciar rutina</Btn>
+    </div>
+  );
+
+  if (finished) return (
+    <div className="fade-in" style={{ maxWidth: 420, margin: "0 auto", textAlign: "center", padding: "60px 20px" }}>
+      <div style={{ fontSize: 80, marginBottom: 16 }}>🎉</div>
+      <div style={{ fontFamily: "'Bebas Neue'", fontSize: 40, color: COLORS.green, marginBottom: 8 }}>Rutina completada!</div>
+      <div style={{ color: COLORS.muted, marginBottom: 32 }}>Excelente trabajo. Tu cuerpo te lo agradece.</div>
+      <Btn onClick={handleRestart} style={{ padding: "14px 32px", fontSize: 16 }}>Volver a empezar</Btn>
+    </div>
+  );
+
+  return (
+    <div className="fade-in" style={{ maxWidth: 420, margin: "0 auto", padding: "20px" }}>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: COLORS.muted, marginBottom: 6 }}>
+          <span>Ejercicio {current + 1} de {EXERCISES.length}</span>
+          <span>{progress}%</span>
+        </div>
+        <div style={{ height: 6, background: COLORS.border, borderRadius: 3 }}>
+          <div style={{ height: "100%", background: COLORS.green, borderRadius: 3, width: `${progress}%`, transition: "width .5s" }} />
+        </div>
+      </div>
+      <Card style={{ textAlign: "center", padding: "32px 20px", marginBottom: 20 }}>
+        <div style={{ fontSize: 80, marginBottom: 16 }}>🧘</div>
+        <div style={{ fontFamily: "'Bebas Neue'", fontSize: 28, letterSpacing: 1, marginBottom: 8 }}>{EXERCISES[current].name}</div>
+        <div style={{ fontFamily: "'Bebas Neue'", fontSize: 64, color: timeLeft <= 10 ? "#ff6060" : COLORS.accent, letterSpacing: 2, marginBottom: 8 }}>{mins}:{secs}</div>
+        <div style={{ height: 4, background: COLORS.border, borderRadius: 2, marginBottom: 16 }}>
+          <div style={{ height: "100%", background: COLORS.accent, borderRadius: 2, width: `${(timeLeft / EXERCISES[current].duration) * 100}%`, transition: "width 1s linear" }} />
+        </div>
+        <div style={{ color: COLORS.muted, fontSize: 14, fontStyle: "italic" }}>{EXERCISES[current].cue}</div>
+      </Card>
+      <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+        <Btn variant="ghost" onClick={handlePrev} disabled={current === 0} style={{ flex: 1, fontSize: 20, padding: "14px 0" }}>⏮</Btn>
+        <Btn onClick={handlePause} style={{ flex: 2, fontSize: 20, padding: "14px 0", background: paused ? COLORS.green : COLORS.accent }}>{paused ? "▶" : "⏸"}</Btn>
+        <Btn variant="ghost" onClick={handleNext} disabled={current === EXERCISES.length - 1} style={{ flex: 1, fontSize: 20, padding: "14px 0" }}>⏭</Btn>
+      </div>
+      <div style={{ marginTop: 24 }}>
+        {EXERCISES.map((e, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${COLORS.border}`, opacity: i < current ? .4 : 1 }}>
+            <div style={{ width: 24, height: 24, borderRadius: 12, background: i < current ? COLORS.green : i === current ? COLORS.accent : COLORS.border, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "#fff", flexShrink: 0 }}>
+              {i < current ? "✓" : i + 1}
+            </div>
+            <span style={{ fontSize: 14, fontWeight: i === current ? 700 : 400, color: i === current ? COLORS.text : COLORS.muted }}>{e.name}</span>
+            <span style={{ marginLeft: "auto", fontSize: 12, color: COLORS.muted }}>{Math.floor(e.duration / 60)} min</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [tab, setTab] = useState("dashboard");
@@ -703,16 +623,9 @@ export default function App() {
     const style = document.createElement("style");
     style.textContent = GLOBAL_CSS;
     document.head.appendChild(style);
-   const saved = loadSession();
-    if (saved) {
-      setUser(saved);
-      setLoadingApp(false);
-    } else {
-      loadSessionFromDB().then(dbUser => {
-        if (dbUser) setUser(dbUser);
-        setLoadingApp(false);
-      });
-    }
+    const saved = loadSession();
+    if (saved) setUser(saved);
+    setLoadingApp(false);
     return () => document.head.removeChild(style);
   }, []);
 
@@ -725,7 +638,11 @@ export default function App() {
   useEffect(() => { loadSessions(); }, [loadSessions]);
 
   const handleLogin = (u) => { saveSession(u); setUser(u); };
-  const handleLogout = () => { localStorage.removeItem("WOD-MCC_user"); setUser(null); setSessions([]); };
+  const handleLogout = () => {
+    localStorage.removeItem("wod-mcc_user");
+    document.cookie = "wod_mcc_user=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    setUser(null); setSessions([]);
+  };
   const handleDelete = async (id) => { await supabase.from("sessions").delete().eq("id", id); loadSessions(); };
 
   if (loadingApp) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: COLORS.bg }}><Spinner /></div>;
@@ -747,7 +664,6 @@ export default function App() {
           </div>
         </div>
       </div>
-
       {!logging && (
         <div style={{ background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}` }}>
           <div style={{ maxWidth: 800, margin: "0 auto", display: "flex" }}>
@@ -757,7 +673,6 @@ export default function App() {
           </div>
         </div>
       )}
-
       <div style={{ maxWidth: 800, margin: "0 auto", padding: "24px 16px" }}>
         {logging ? (
           <LogWorkout user={user} onSave={() => { loadSessions(); setLogging(false); setTab("history"); }} onCancel={() => setLogging(false)} />
@@ -789,7 +704,7 @@ export default function App() {
           </div>
         ) : tab === "history" ? (
           <HistoryView sessions={sessions} onDelete={handleDelete} />
-       tab === "stats" ? (
+        ) : tab === "stats" ? (
           <StatsView sessions={sessions} />
         ) : tab === "pelvic" ? (
           <PelvicCoach />
